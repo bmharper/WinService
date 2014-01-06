@@ -15,8 +15,8 @@ This is not necessarily the model you would always use, but there's nothing wron
 #include <windows.h>
 #include "WinService.h"
 
-void WINAPI SvcMain( DWORD dwArgc, TCHAR** lpszArgv );
-void WINAPI SvcCtrlHandler( DWORD dwCtrl );
+void  WINAPI SvcMain( DWORD dwArgc, TCHAR** lpszArgv );
+DWORD WINAPI SvcCtrlHandler( DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext );
 
 const TCHAR* SvcName = TEXT("MyExampleService");
 WinService_State Service;
@@ -116,7 +116,7 @@ void WINAPI SvcMain( DWORD dwArgc, TCHAR** lpszArgv )
 	Service.SvcMain_End();
 }
 
-void WINAPI SvcCtrlHandler( DWORD dwCtrl )
+DWORD WINAPI SvcCtrlHandler( DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext )
 {
 	switch( dwCtrl )
 	{
@@ -124,13 +124,12 @@ void WINAPI SvcCtrlHandler( DWORD dwCtrl )
 		// Tell Windows that it will take us 1000ms to shutdown
 		Service.ReportSvcStatus( WinService_Status_Stop_Pending, 1000 );
 		SetEvent( Service.SvcStopEvent );
-		return;
+		return NO_ERROR;
 
 	case SERVICE_CONTROL_INTERROGATE:
-		break;
-
-	default:
-		break;
+		return NO_ERROR;
 	}
+
+	return ERROR_CALL_NOT_IMPLEMENTED;
 }
 

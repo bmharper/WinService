@@ -140,10 +140,9 @@ void WinService_State::ResetStatus()
 
 bool WinService_State::Run()
 {
-	if (	SvcMain == NULL ||
-			SvcCtrlHandler == NULL )
+	if ( SvcMain == NULL )
 	{
-		LastError = "SvcMain and SvcCtrlHandler must be set";
+		LastError = "SvcMain must be set";
 		return false;
 	}
 
@@ -177,10 +176,11 @@ bool WinService_State::SvcMain_Start( DWORD dwArgc, TCHAR** lpszArgv )
 		return false;
 	}
 
-	SvcStatusHandle = RegisterServiceCtrlHandler( SvcName.c_str(), SvcCtrlHandler );		// name is ignored for SERVICE_WIN32_OWN_PROCESS
+	LPHANDLER_FUNCTION_EX ctrlHandler = SvcCtrlHandler ? SvcCtrlHandler : DefaultSvcCtrlHandler;
+	SvcStatusHandle = RegisterServiceCtrlHandlerEx( SvcName.c_str(), ctrlHandler, this );		// name is ignored for SERVICE_WIN32_OWN_PROCESS
 	if ( SvcStatusHandle == NULL )
 	{
-		LastError = "Unable to do RegisterServiceCtrlHandler: " + SysLastErrMsg();
+		LastError = "Unable to do RegisterServiceCtrlHandlerEx: " + SysLastErrMsg();
 		SetEvent( SvcStopEvent );
 		return false;
 	}
@@ -229,4 +229,21 @@ void WinService_State::ReportSvcStatus( WinService_Status currentState, DWORD dw
 
 	// Report the status of the service to the SCM.
 	SetServiceStatus( SvcStatusHandle, &status );
+}
+
+DWORD WINAPI WinService_State::DefaultSvcCtrlHandler( DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext )
+{
+	WinService_State* self = (WinService_State*) lpContext;
+	switch( dwCtrl )
+	{
+	case SERVICE_CONTROL_STOP:
+		self->ReportSvcStatus( WinService_Status_Stop_Pending, 0 );
+		SetEvent( self->SvcStopEvent );
+		return NO_ERROR;
+
+	case SERVICE_CONTROL_INTERROGATE:
+		return NO_ERROR;
+	}
+
+	return ERROR_CALL_NOT_IMPLEMENTED;
 }

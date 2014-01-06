@@ -10,8 +10,10 @@
 #pragma once
 #include <WinSvc.h>
 
-#ifndef WINSERVICE_HELPER_API
-#define WINSERVICE_HELPER_API
+#ifdef PAPI
+#	define WINSERVICE_HELPER_API PAPI
+#else
+#	define WINSERVICE_HELPER_API
 #endif
 
 enum WinService_StartupType
@@ -40,6 +42,7 @@ enum WinService_Status
 	Instructions
 	------------
 
+	* Create an instance of WinService_State
 	* Populate SvcMain
 		* Inside your SvcMain, call SvcMain_Start() upon entry. Return immediately if SvcMain_Start() returns false.
 		* Inside your SvcMain, call SvcMain_End() upon exit.
@@ -61,20 +64,25 @@ public:
 	void (WINAPI *SvcMain)( DWORD dwArgc, TCHAR** lpszArgv );
 
 	// Called by SCM whenever a control code is sent to the service using the ControlService function.
-	void (WINAPI *SvcCtrlHandler)( DWORD dwCtrl );
+	// If you do not set this, then it defaults to DefaultSvcCtrlHandler.
+	// lpContext points to the WinService_State object
+	DWORD (WINAPI *SvcCtrlHandler)( DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext );
 
 	nstring					SvcName;			// You can leave this blank for a SERVICE_WIN32_OWN_PROCESS
-	SERVICE_STATUS_HANDLE   SvcStatusHandle;	// Populated by BootSvcMain()
-	HANDLE                  SvcStopEvent;		// Created by BootSvcMain()
+	SERVICE_STATUS_HANDLE   SvcStatusHandle;	// Populated by SvcMain_Start(). ReportSvcStatus uses this to inform the OS of the state of the service.
+	HANDLE                  SvcStopEvent;		// Created by SvcMain_Start(). DefaultSvcCtrlHandler() will toggle this upon receipt of SERVICE_CONTROL_STOP.
 	DWORD					Win32ExitCode;		// Sent every time we call ReportSvcStatus. Default = 0.
 	std::string				LastError;			// If an error occurs inside any function in here, it gets written to LastError
 
 			WinService_State();
 			~WinService_State();
-	bool	Run();
+	bool	Run();																	// If this returns false, then the error is in LastError.
 	bool	SvcMain_Start( DWORD dwArgc, TCHAR** lpszArgv );						// Call this at the start of your SvcMain. If it returns false, then return immediately from your SvcMain().
 	void	SvcMain_End();															// Call this at the end of your SvcMain
 	void	ReportSvcStatus( WinService_Status currentState, DWORD dwWaitHintMS );	// Use this to inform the OS of the status of your service
+
+	// Default SvcCtrlHandler. The only logic this performs is when receiving SERVICE_CONTROL_STOP, it will toggle SvcStopEvent.
+	static DWORD WINAPI DefaultSvcCtrlHandler( DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext );
 
 protected:
 	DWORD	StatusCheckPoint;
