@@ -134,8 +134,12 @@ void WinService_State::ResetStatus()
 {
 	SvcStatusHandle = NULL;
 	SvcStopEvent = NULL;
+	SvcMain = NULL;
+	SvcCtrlHandler = NULL;
+	OwnSvcStopEvent = false;
 	StatusCheckPoint = 0;
 	Win32ExitCode = 0;
+	RunInForeground = false;
 }
 
 bool WinService_State::Run()
@@ -144,6 +148,12 @@ bool WinService_State::Run()
 	{
 		LastError = "SvcMain must be set";
 		return false;
+	}
+
+	if ( RunInForeground )
+	{
+		SvcMain( 0, NULL );
+		return true;
 	}
 
 	SERVICE_TABLE_ENTRY dispatchTable[] =
@@ -155,7 +165,6 @@ bool WinService_State::Run()
 	if ( !StartServiceCtrlDispatcher( dispatchTable ) )
 	{ 
 		LastError = "StartServiceCtrlDispatcher failed with " + SysLastErrMsg();
-		//SvcReportEvent(TEXT("StartServiceCtrlDispatcher")); 
 		return false;
 	}
 	
@@ -169,20 +178,27 @@ bool WinService_State::SvcMain_Start( DWORD dwArgc, TCHAR** lpszArgv )
 	if ( dwArgc == 1 )
 		SvcName = lpszArgv[0];
 
-	SvcStopEvent = CreateEvent( NULL, true, false, NULL );
 	if ( SvcStopEvent == NULL )
 	{
-		LastError = "Unable to create Service Stop Event: " + SysLastErrMsg();
-		return false;
+		SvcStopEvent = CreateEvent( NULL, true, false, NULL );
+		if ( SvcStopEvent == NULL )
+		{
+			LastError = "Unable to create Service Stop Event: " + SysLastErrMsg();
+			return false;
+		}
+		OwnSvcStopEvent = true;
 	}
 
-	LPHANDLER_FUNCTION_EX ctrlHandler = SvcCtrlHandler ? SvcCtrlHandler : DefaultSvcCtrlHandler;
-	SvcStatusHandle = RegisterServiceCtrlHandlerEx( SvcName.c_str(), ctrlHandler, this );		// name is ignored for SERVICE_WIN32_OWN_PROCESS
-	if ( SvcStatusHandle == NULL )
+	if ( !RunInForeground )
 	{
-		LastError = "Unable to do RegisterServiceCtrlHandlerEx: " + SysLastErrMsg();
-		SetEvent( SvcStopEvent );
-		return false;
+		LPHANDLER_FUNCTION_EX ctrlHandler = SvcCtrlHandler ? SvcCtrlHandler : DefaultSvcCtrlHandler;
+		SvcStatusHandle = RegisterServiceCtrlHandlerEx( SvcName.c_str(), ctrlHandler, this );		// name is ignored for SERVICE_WIN32_OWN_PROCESS
+		if ( SvcStatusHandle == NULL )
+		{
+			LastError = "Unable to do RegisterServiceCtrlHandlerEx: " + SysLastErrMsg();
+			SetEvent( SvcStopEvent );
+			return false;
+		}
 	}
 
 	ReportSvcStatus( WinService_Status_Start_Pending, 1000 );
@@ -192,20 +208,27 @@ bool WinService_State::SvcMain_Start( DWORD dwArgc, TCHAR** lpszArgv )
 
 void WinService_State::SvcMain_End()
 {
-	CloseHandle( SvcStopEvent );
+	ReportSvcStatus( WinService_Status_Stopped, 0 );
+
+	if ( OwnSvcStopEvent )
+	{
+		CloseHandle( SvcStopEvent );
+		SvcStopEvent = NULL;
+		OwnSvcStopEvent = false;
+	}
 	CloseHandle( SvcStatusHandle );
+	SvcStatusHandle = NULL;
 }
 
-//
-// Purpose: 
-//   Sets the current service status and reports it to the SCM.
-//
-// Parameters:
-//   dwCurrentState - The current state (see SERVICE_STATUS)
-//   dwWaitHintMS - Estimated time for pending operation, in milliseconds
-// 
+
+// Sets the current service status and reports it to the SCM.
+//	currentState	The current state (see SERVICE_STATUS)
+//	dwWaitHintMS	Estimated time for pending operation, in milliseconds
 void WinService_State::ReportSvcStatus( WinService_Status currentState, DWORD dwWaitHintMS )
 {
+	if ( RunInForeground )
+		return;
+
 	SERVICE_STATUS status;
 	memset( &status, 0, sizeof(status) );
 

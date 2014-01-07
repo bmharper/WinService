@@ -43,11 +43,16 @@ enum WinService_Status
 	------------
 
 	* Create an instance of WinService_State
-	* Populate SvcMain
-		* Inside your SvcMain, call SvcMain_Start() upon entry. Return immediately if SvcMain_Start() returns false.
-		* Inside your SvcMain, call SvcMain_End() upon exit.
-	* Populate SvcCtrlHandler
-	* Run()
+	* Set SvcMain, and inside your SvcMain function, do the following:
+		* Call SvcMain_Start(). Return immediately if SvcMain_Start() returns false.
+		* Run your startup code.
+		* Call ReportSvcStatus() to inform Windows that you are in the WinService_Status_Running state.
+		* Run until SvcStopEvent is signaled.
+		* Call SvcMain_End().
+	* (Optionally set SvcCtrlHandler, if DefaultSvcCtrlHandler is not sufficient for your needs)
+	* (Optionally set SvcStopEvent)
+	* (Optionally set RunInForeground)
+	* Call Run()
 
 */
 class WINSERVICE_HELPER_API WinService_State
@@ -70,9 +75,18 @@ public:
 
 	nstring					SvcName;			// You can leave this blank for a SERVICE_WIN32_OWN_PROCESS
 	SERVICE_STATUS_HANDLE   SvcStatusHandle;	// Populated by SvcMain_Start(). ReportSvcStatus uses this to inform the OS of the state of the service.
-	HANDLE                  SvcStopEvent;		// Created by SvcMain_Start(). DefaultSvcCtrlHandler() will toggle this upon receipt of SERVICE_CONTROL_STOP.
-	DWORD					Win32ExitCode;		// Sent every time we call ReportSvcStatus. Default = 0.
+	
+	// This is created by SvcMain_Start(), if NULL. DefaultSvcCtrlHandler() will toggle this upon receipt of SERVICE_CONTROL_STOP.
+	// If this is not NULL when SvcMain_Start() is run, then we assume that you have set this to a handle of your own creation.
+	HANDLE                  SvcStopEvent;
+	
+	DWORD					Win32ExitCode;		// Sent to SetServiceStatus() every time ReportSvcStatus is called. Default = 0.
 	std::string				LastError;			// If an error occurs inside any function in here, it gets written to LastError
+	
+	// If true, then do not run as a proper Windows Service.
+	// Instead, run in the foreground. This turns a lot of calls into no-ops.
+	// This is useful because it allows you to use a single code path for "service" as well as "foreground" execution.
+	bool					RunInForeground;	
 
 			WinService_State();
 			~WinService_State();
@@ -86,6 +100,7 @@ public:
 
 protected:
 	DWORD	StatusCheckPoint;
+	bool	OwnSvcStopEvent;
 	void	ResetStatus();
 };
 

@@ -18,6 +18,7 @@ This is not necessarily the model you would always use, but there's nothing wron
 void  WINAPI SvcMain( DWORD dwArgc, TCHAR** lpszArgv );
 DWORD WINAPI SvcCtrlHandler( DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext );
 
+const char* SvcNameA = "MyExampleService";
 const TCHAR* SvcName = TEXT("MyExampleService");
 WinService_State Service;
 int Ticker;
@@ -43,6 +44,7 @@ int main(int argc, char** argv)
 		std::string p1 = argv[1];
 		if ( p1 == "install" || p1 == "remove" )
 		{
+			printf( "Service name is '%s'\n", SvcNameA );
 			WinService_Configure( p1 == "install", SvcName, svcCmdLine.c_str(), WinService_Startup_Demand, msg );
 		}
 		else if ( p1 == "run" )
@@ -106,7 +108,6 @@ void WINAPI SvcMain( DWORD dwArgc, TCHAR** lpszArgv )
 		if ( WaitForSingleObject( Service.SvcStopEvent, 3000 ) == WAIT_OBJECT_0 )
 		{
 			// Perform shutdown here...
-			Service.ReportSvcStatus( WinService_Status_Stopped, 0 );
 			break;
 		}
 	}
